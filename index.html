@@ -6,39 +6,47 @@
   <title>PDF Signer</title>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Load libraries first (non-defer so they're available to script.js) -->
+  <!-- Load libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 </head>
 <body>
+  <!-- SVG Filter exactly as your demo -->
+  <svg style="display: none">
+    <filter id="lg-dist" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.008" numOctaves="2" seed="92" result="noise" />
+      <feGaussianBlur in="noise" stdDeviation="2" result="blurred" />
+      <feDisplacementMap in="SourceGraphic" in2="blurred" scale="70" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+  </svg>
+
   <div class="app">
-    <!-- Toolbar -->
-    <header class="toolbar">
-      <div class="brand">
-        <span class="brand-icon">✍️</span>
-        <span class="brand-text">PDF Signer</span>
-      </div>
+    <!-- Toolbar (Liquid Glass) -->
+    <header class="toolbar glass-container">
+      <div class="glass-filter"></div>
+      <div class="glass-overlay"></div>
+      <div class="glass-specular"></div>
+      <div class="glass-content toolbar-content">
+        <div class="brand">
+          <span class="brand-icon">✍️</span>
+          <span class="brand-text">PDF Signer</span>
+        </div>
 
-      <div class="toolbar-group">
-        <label class="file-btn">
-          <span>📄 Load PDF</span>
-          <input type="file" id="pdfInput" accept="application/pdf" hidden />
-        </label>
-        <span id="fileStatus" class="file-status">No PDF loaded</span>
-      </div>
+        <div class="toolbar-group">
+          <label class="file-btn">
+            <span>📄 Load PDF</span>
+            <input type="file" id="pdfInput" accept="application/pdf" hidden />
+          </label>
+          <span id="fileStatus" class="file-status">No PDF loaded</span>
+        </div>
 
-      <div class="toolbar-spacer"></div>
+        <div class="toolbar-spacer"></div>
 
-      <div class="toolbar-group">
-        <button id="addSignatureBtn" class="btn btn-secondary" disabled title="Place the selected signature">
-          + Signature
-        </button>
-        <button id="addDateBtn" class="btn btn-secondary" disabled title="Place a date textbox">
-          + Date
-        </button>
-        <button id="downloadBtn" class="btn btn-primary" disabled>
-          ⬇ Download PDF
-        </button>
+        <div class="toolbar-group">
+          <button id="addSignatureBtn" class="btn btn-secondary" disabled>+ Signature</button>
+          <button id="addDateBtn" class="btn btn-secondary" disabled>+ Date</button>
+          <button id="downloadBtn" class="btn btn-primary" disabled>⬇ Download PDF</button>
+        </div>
       </div>
     </header>
 
@@ -48,89 +56,106 @@
     </div>
 
     <div class="workspace">
-      <!-- PDF Viewer (Central Focus) -->
+      <!-- PDF Viewer -->
       <main class="viewer" id="pdfViewer">
         <div class="empty-state" id="emptyState">
           <div class="empty-icon">📄</div>
           <h2>No PDF loaded</h2>
-          <p>Click <strong>Load PDF</strong> in the top left to begin.</p>
+          <p>Click <strong>Load PDF</strong> above to begin.</p>
         </div>
         <div id="pagesContainer" class="pages-container"></div>
       </main>
 
-      <!-- Unified Sidebar -->
+      <!-- Sidebar (Liquid Glass Panels) -->
       <aside class="sidebar">
         <div class="sidebar-scroll">
-          <section class="panel">
-            <h3>✍️ Signatures</h3>
-            
-            <div class="field">
-              <label>Your signatures</label>
-              <div id="sigLibrary" class="sig-library empty">
-                <span>No signatures yet</span>
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Add new</label>
-              <div id="sigPreview" class="sig-preview empty">
-                <span>No PNG loaded</span>
-              </div>
-              <label class="file-btn file-btn-full">
-                <span>Choose PNG</span>
-                <input type="file" id="signatureInput" accept="image/png" hidden />
-              </label>
-            </div>
-
-            <div class="grid-2">
+          
+          <section class="panel glass-container">
+            <div class="glass-filter"></div>
+            <div class="glass-overlay"></div>
+            <div class="glass-specular"></div>
+            <div class="glass-content panel-content">
+              <h3>✍️ Signatures</h3>
+              
               <div class="field">
-                <label>Width (pt)</label>
-                <input type="number" id="sigWidthInput" value="150" min="20" max="800" step="1" />
+                <label>Your signatures</label>
+                <div id="sigLibrary" class="sig-library empty">
+                  <span>No signatures yet</span>
+                </div>
               </div>
+
               <div class="field">
-                <label>Height (pt)</label>
-                <input type="number" id="sigHeightInput" value="60" min="20" max="400" step="1" />
+                <label>Add new</label>
+                <div id="sigPreview" class="sig-preview empty">
+                  <span>No PNG loaded</span>
+                </div>
+                <label class="file-btn file-btn-full">
+                  <span>Choose PNG</span>
+                  <input type="file" id="signatureInput" accept="image/png" hidden />
+                </label>
               </div>
+
+              <div class="grid-2">
+                <div class="field">
+                  <label>Width (pt)</label>
+                  <input type="number" id="sigWidthInput" value="150" min="20" max="800" step="1" />
+                </div>
+                <div class="field">
+                  <label>Height (pt)</label>
+                  <input type="number" id="sigHeightInput" value="60" min="20" max="400" step="1" />
+                </div>
+              </div>
+              <button id="applySigSizeBtn" class="btn btn-secondary btn-block" disabled>
+                Apply size
+              </button>
             </div>
-            <button id="applySigSizeBtn" class="btn btn-secondary btn-block" disabled>
-              Apply size to selected
-            </button>
           </section>
 
-          <section class="panel">
-            <h3>📅 Date Box</h3>
-            <div class="field">
-              <label>Date text</label>
-              <input type="text" id="dateTextInput" placeholder="e.g. 2025-03-21" />
-            </div>
-            <div class="grid-2">
+          <section class="panel glass-container">
+            <div class="glass-filter"></div>
+            <div class="glass-overlay"></div>
+            <div class="glass-specular"></div>
+            <div class="glass-content panel-content">
+              <h3>📅 Date Box</h3>
               <div class="field">
-                <label>Font</label>
-                <select id="dateFontSelect">
-                  <option value="Helvetica">Helvetica</option>
-                  <option value="Helvetica-Bold">Helvetica Bold</option>
-                  <option value="Times-Roman">Times Roman</option>
-                  <option value="Times-Bold">Times Bold</option>
-                  <option value="Courier">Courier</option>
-                  <option value="Courier-Bold">Courier Bold</option>
-                </select>
+                <label>Date text</label>
+                <input type="text" id="dateTextInput" placeholder="e.g. 2025-03-21" />
               </div>
-              <div class="field">
-                <label>Size (pt)</label>
-                <input type="number" id="dateFontSizeInput" value="16" min="8" max="72" step="1" />
+              <div class="grid-2">
+                <div class="field">
+                  <label>Font</label>
+                  <select id="dateFontSelect">
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Helvetica-Bold">Helvetica Bold</option>
+                    <option value="Times-Roman">Times Roman</option>
+                    <option value="Times-Bold">Times Bold</option>
+                    <option value="Courier">Courier</option>
+                    <option value="Courier-Bold">Courier Bold</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Size (pt)</label>
+                  <input type="number" id="dateFontSizeInput" value="16" min="8" max="72" step="1" />
+                </div>
               </div>
+              <button id="updateDateBtn" class="btn btn-secondary btn-block" disabled>
+                Update date
+              </button>
             </div>
-            <button id="updateDateBtn" class="btn btn-secondary btn-block" disabled>
-              Update selected date
-            </button>
           </section>
 
-          <section class="panel">
-            <h3>🗑️ Selected Element</h3>
-            <button id="deleteSelectedBtn" class="btn btn-danger btn-block" disabled>
-              Delete selected
-            </button>
+          <section class="panel glass-container">
+            <div class="glass-filter"></div>
+            <div class="glass-overlay"></div>
+            <div class="glass-specular"></div>
+            <div class="glass-content panel-content">
+              <h3>🗑️ Selected</h3>
+              <button id="deleteSelectedBtn" class="btn btn-danger btn-block" disabled>
+                Delete selected
+              </button>
+            </div>
           </section>
+
         </div>
       </aside>
     </div>

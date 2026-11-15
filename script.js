@@ -24,6 +24,7 @@
   const RENDER_SCALE = 2.0;
   const MIN_OVERLAY_SIZE = 20;
   const STORAGE_KEY = 'pdf_signer_signatures_v1';
+  const SETTINGS_KEY = 'pdf_signer_settings_v1';
 
   const FONT_MAP = {
     'Helvetica':      { lib: 'Helvetica',      css: 'Helvetica, Arial, sans-serif',      weight: '400' },
@@ -99,7 +100,7 @@
   function getSigById(id) { return signatureLibrary.find(s => s.id === id) || null; }
 
   /* ============================================================
-     LOCAL STORAGE (Save & Load Signatures)
+     LOCAL STORAGE (Save & Load Signatures + Settings)
      ============================================================ */
   function loadSignaturesFromStorage() {
     try {
@@ -108,7 +109,6 @@
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
           signatureLibrary = parsed;
-          // Ensure nextSigId is higher than any existing ID
           const maxId = Math.max(...signatureLibrary.map(s => s.id || 0));
           nextSigId = maxId + 1;
           console.log('[PDF Signer] loaded', signatureLibrary.length, 'signatures from localStorage');
@@ -116,7 +116,6 @@
       }
     } catch (err) {
       console.error('[PDF Signer] Failed to load from localStorage:', err);
-      // Clear corrupted data so it doesn't break the app on reload
       localStorage.removeItem(STORAGE_KEY);
     }
   }
@@ -126,10 +125,30 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(signatureLibrary));
     } catch (err) {
       console.error('[PDF Signer] Failed to save to localStorage:', err);
-      // Most likely QuotaExceededError (the image is too large)
       if (err.name === 'QuotaExceededError' || err.code === 22) {
-        showError('Your browser storage is full. The signature was added to the current session, but it might not be saved for next time. Try uploading a smaller PNG.');
+        showError('Your browser storage is full. The signature was added to the current session, but it might not be saved for next time.');
       }
+    }
+  }
+
+  function loadSettings() {
+    try {
+      const stored = localStorage.getItem(SETTINGS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.width) els.sigWidthInput.value = parsed.width;
+        if (parsed.height) els.sigHeightInput.value = parsed.height;
+      }
+    } catch (err) {
+      console.error('[PDF Signer] Failed to load settings:', err);
+    }
+  }
+
+  function saveSettings(w, h) {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ width: w, height: h }));
+    } catch (err) {
+      console.error('[PDF Signer] Failed to save settings:', err);
     }
   }
 
@@ -138,8 +157,8 @@
     cacheDom();
     console.log('[PDF Signer] init — DOM cached');
 
-    // Load saved signatures before rendering the UI
     loadSignaturesFromStorage();
+    loadSettings(); // Load saved width/height
 
     const t = new Date();
     els.dateTextInput.value =
@@ -154,7 +173,10 @@
     els.updateDateBtn.addEventListener('click', updateSelectedDate);
     els.deleteSelectedBtn.addEventListener('click', deleteSelected);
 
-    // Error close
+    // Save width/height immediately if the user manually types in the inputs
+    els.sigWidthInput.addEventListener('change', () => saveSettings(els.sigWidthInput.value, els.sigHeightInput.value));
+    els.sigHeightInput.addEventListener('change', () => saveSettings(els.sigWidthInput.value, els.sigHeightInput.value));
+
     document.addEventListener('click', (e) => {
       if (e.target && e.target.id === 'errorBannerClose') {
         e.preventDefault();
@@ -217,7 +239,6 @@
       thumb.addEventListener('click', () => {
         selectedSigId = sig.id;
         renderSignatureLibrary();
-        console.log('[PDF Signer] selected signature:', sig.name);
       });
 
       els.sigLibrary.appendChild(thumb);
@@ -227,12 +248,12 @@
   function removeSignature(id) {
     signatureLibrary = signatureLibrary.filter(s => s.id !== id);
     if (selectedSigId === id) selectedSigId = null;
-    saveSignaturesToStorage(); // Update storage immediately on delete
+    saveSignaturesToStorage();
     renderSignatureLibrary();
   }
 
   /* ============================================================
-     SIGNATURE FILE  (adds to library)
+     SIGNATURE FILE
      ============================================================ */
   function onSignatureSelected(e) {
     const file = e.target.files && e.target.files[0];
@@ -247,7 +268,6 @@
       const dataUrl = ev.target.result;
       const img = new Image();
       img.onload = () => {
-        // Alpha-crop
         const c = document.createElement('canvas');
         c.width = img.width;
         c.height = img.height;
@@ -280,7 +300,6 @@
           fw = cw; fh = ch;
         }
 
-        // Auto-name from file
         const baseName = file.name.replace(/\.png$/i, '') || `Signature ${signatureLibrary.length + 1}`;
         const sig = {
           id: nextSigId++,
@@ -292,15 +311,11 @@
         signatureLibrary.push(sig);
         selectedSigId = sig.id;
 
-        // Preview
         els.sigPreview.classList.remove('empty');
         els.sigPreview.innerHTML = `<img src="${finalUrl}" alt="preview">`;
 
-        saveSignaturesToStorage(); // Save to localStorage
+        saveSignaturesToStorage();
         renderSignatureLibrary();
-        console.log('[PDF Signer] signature added:', sig.name, fw, 'x', fh);
-
-        // Clear input so same file can be re-picked later
         e.target.value = '';
       };
       img.onerror = () => showError('Could not decode PNG.');
@@ -316,11 +331,9 @@
   async function onPdfSelected(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-    console.log('[PDF Signer] file selected:', file.name, file.size, 'bytes');
     setStatus('Reading file…');
     try {
       const buffer = await file.arrayBuffer();
-      console.log('[PDF Signer] got ArrayBuffer:', buffer.byteLength);
       await loadPdf(buffer, file.name);
     } catch (err) {
       console.error('[PDF Signer] load error:', err);
@@ -330,10 +343,8 @@
   }
 
   async function loadPdf(arrayBuffer, fileName) {
-    console.log('[PDF Signer] parsing with PDF.js…');
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
     pdfjsDoc = await loadingTask.promise;
-    console.log('[PDF Signer] PDF.js loaded:', pdfjsDoc.numPages, 'page(s)');
 
     const numPages = pdfjsDoc.numPages;
     pdfPages = [];
@@ -343,10 +354,8 @@
       pdfPages.push({ pageIndex: i - 1, width: vp.width, height: vp.height });
     }
 
-    console.log('[PDF Signer] parsing with pdf-lib…');
     currentPdfBytes = new Uint8Array(arrayBuffer.slice(0));
     pdfDoc = await PDFLib.PDFDocument.load(currentPdfBytes, { ignoreEncryption: true });
-    console.log('[PDF Signer] pdf-lib ready');
 
     clearAllOverlays();
     els.emptyState.style.display = 'none';
@@ -528,10 +537,18 @@
       overlay.width = round2(nw / scale);
       overlay.height = round2(nh / scale);
       overlay.y = round2(origHeight - st / scale - overlay.height);
+      
+      // Update the inputs live when resizing
+      els.sigWidthInput.value = Math.round(overlay.width);
+      els.sigHeightInput.value = Math.round(overlay.height);
     }
     function onUp() {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      // Save dimensions when resize finishes
+      if (overlay.type === 'signature') {
+        saveSettings(overlay.width, overlay.height);
+      }
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -598,7 +615,10 @@
     const sig = getSigById(selectedSigId);
     if (!sig) return;
 
-    const w = 150, h = 60;
+    // Use the saved dimensions from the inputs
+    const w = parseFloat(els.sigWidthInput.value) || 150;
+    const h = parseFloat(els.sigHeightInput.value) || 60;
+    
     const page = pdfPages[0];
     const ov = {
       id: nextOverlayId++,
@@ -614,7 +634,6 @@
     const wrapper = getPageWrapper(0);
     if (wrapper) createOverlayDOM(ov, wrapper);
     selectOverlay(ov.id);
-    console.log('[PDF Signer] placed signature:', sig.name);
   }
 
   function addDateOverlay() {
@@ -651,12 +670,14 @@
     if (selectedId == null) return;
     const ov = overlays.find(o => o.id === selectedId);
     if (!ov || ov.type !== 'signature') return;
+    
     const w = parseFloat(els.sigWidthInput.value);
     const h = parseFloat(els.sigHeightInput.value);
     if (!(w > 0) || !(h > 0)) return;
 
     ov.width = round2(w);
     ov.height = round2(h);
+    saveSettings(ov.width, ov.height); // Save dimensions when applied
 
     const el = document.querySelector(`.overlay-item[data-id="${ov.id}"]`);
     if (!el) return;
